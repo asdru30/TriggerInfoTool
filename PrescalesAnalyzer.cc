@@ -1,0 +1,247 @@
+// -*- C++ -*-
+//
+// Package:    PrescalesAnalyzer
+// Class:      PrescalesAnalyzer
+//
+/**\class PrescalesAnalyzer PrescalesAnalyzer.cc
+ Description: [one line class summary]
+ Implementation:
+     [Notes on implementation]
+*/
+//
+// Original Author:  Edgar Carrera
+//         Created:  Mon Jul  3 15:59:18 CEST 2017
+// $Id$
+//
+//
+
+
+// system include files
+#include <memory>
+
+// user include files
+#include "FWCore/Framework/interface/Frameworkfwd.h"
+#include "FWCore/Framework/interface/EDAnalyzer.h"
+
+#include "FWCore/Framework/interface/Event.h"
+#include "FWCore/Framework/interface/MakerMacros.h"
+
+#include "FWCore/ParameterSet/interface/ParameterSet.h"
+
+//Following the HLTEventAnalyzerAOD.h,
+//include the following headers:
+#include "HLTrigger/HLTcore/interface/HLTConfigProvider.h"
+#include "DataFormats/Common/interface/TriggerResults.h"
+#include "DataFormats/HLTReco/interface/TriggerEvent.h"
+
+//Also include headers from  HLTEventAnalyzerAOD.cc
+#include "FWCore/Common/interface/TriggerNames.h"
+#include "FWCore/Common/interface/TriggerResultsByName.h"
+#include <cassert>
+
+
+//
+// class declaration
+//
+
+class PrescalesAnalyzer : public edm::EDAnalyzer {
+   public:
+      explicit PrescalesAnalyzer(const edm::ParameterSet&);
+      ~PrescalesAnalyzer();
+
+      virtual void beginRun(edm::Run const&, edm::EventSetup const&);
+      virtual void analyze(const edm::Event&, const edm::EventSetup&);
+      virtual void analyzeTrigger(const edm::Event&, const edm::EventSetup&, const std::string& triggerName);
+      //the follwing are not being used here
+      virtual void beginJob() ;
+      virtual void endJob() ;
+      virtual void endRun(edm::Run const&, edm::EventSetup const&);
+      virtual void beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&);
+      virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&);
+      static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
+
+   private:
+
+      // from HLTEventAnalyzerAOD.h
+      /// module config parameters
+      std::string   triggerName_;
+
+      // additional class data memebers
+      // these are actually the containers where we will store
+      // the trigger information
+      edm::Handle<edm::TriggerResults>   triggerResultsHandle_;
+      edm::Handle<trigger::TriggerEvent> triggerEventHandle_;
+      HLTConfigProvider hltConfig_;
+
+      // ----------member data ---------------------------
+};
+
+//
+// constants, enums and typedefs
+//
+
+//
+// static data member definitions
+//
+
+//
+// constructors and destructor
+//
+
+//This should match your configuration python file
+PrescalesAnalyzer::PrescalesAnalyzer(const edm::ParameterSet& ps):
+triggerName_(ps.getParameter<std::string>("triggerName"))
+{
+   //now do what ever initialization is needed
+
+}
+
+
+PrescalesAnalyzer::~PrescalesAnalyzer()
+{
+
+   // do anything here that needs to be done at desctruction time
+   // (e.g. close files, deallocate resources etc.)
+
+}
+
+
+//
+// member functions
+//
+
+
+// ------------ method called when starting to processes a run  ------------
+void PrescalesAnalyzer::beginRun(edm::Run const& iRun, edm::EventSetup const& iSetup)
+//--------------------------------------------------------------------------
+{
+  using namespace std;
+  using namespace edm;
+
+	bool changed(true);
+	hltConfig_.init(iRun,iSetup,"HLT",changed);
+
+  hltConfig_.dump("PrescaleTable");
+}//------------------- beginRun()
+
+
+// ------------ method called for each event  ------------------------------
+// As with any EDAnalyzer, this method is the heart of the analysis
+void PrescalesAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
+//--------------------------------------------------------------------------
+{
+   using namespace edm;
+   using namespace std;
+
+   // Get event products:
+   // In the following, the code is trying to access the information
+   // from the ROOT files and point the containers (that we created),
+   // namely triggerResultsHandle_ and triggerEVentHandle_,
+   // to the correct "address", given at configuration time
+   // and assigned to triggerResultsTag_ and triggerEventTag_
+
+   InputTag triggerEventTag_("hltTriggerSummaryAOD","","HLT");
+   InputTag triggerResultsTag_("TriggerResults","","HLT");
+   iEvent.getByLabel(triggerResultsTag_,triggerResultsHandle_);
+   iEvent.getByLabel(triggerEventTag_,triggerEventHandle_);
+
+   if (triggerName_=="@") {
+     const unsigned int n(hltConfig_.size());
+     for (unsigned int i=0; i!=n; ++i) {
+       analyzeTrigger(iEvent,iSetup,hltConfig_.triggerName(i));
+     }
+   } else {
+     analyzeTrigger(iEvent,iSetup,triggerName_);
+   }
+
+  return;
+
+}//---------------------------analyze()
+
+
+//---------------------------Actual trigger analysis-------------
+void PrescalesAnalyzer::analyzeTrigger(const edm::Event& iEvent, const edm::EventSetup& iSetup, const std::string& triggerName)
+//-----------------------------------------------------------------
+{
+
+  using namespace std;
+  using namespace edm;
+  using namespace reco;
+  using namespace trigger;
+
+  cout<<"Currently analyzing trigger "<<triggerName<<endl;
+
+  //Get the trigger index for the current trigger
+  const unsigned int triggerIndex(hltConfig_.triggerIndex(triggerName));
+
+
+  //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  // EXAMPLE: L1 and HLT prescale values via (L1) EventSetup
+  // Current (default) prescale set index - to be taken from L1GtUtil via Event.
+  // Try to get the L1 and HLT prescale values that were actually used
+  // for this event.
+  // This example needs the conditions stored in the Global Tag,
+  // which is some sort of snapshot of the by-then current detector
+  // conditions.  They need to be extracted from the database
+  // and for that the "Frontier Conditions" lines need to
+  // be added in the python configuration file along with the
+  // name for the global tag.
+  // This can make the job very slow at the very begining....
+  //Uncomment the lines below
+  //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  const std::pair<int,int> prescales(hltConfig_.prescaleValues(iEvent,iSetup,triggerName));
+  cout << "HLTEventAnalyzerAOD::analyzeTrigger: path "
+      << triggerName << " [" << triggerIndex << "] "
+      << "prescales L1T,HLT: " << prescales.first << "," << prescales.second
+      << endl;
+  //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+  return;
+}//--------------------------analyzeTrigger()
+
+
+
+// ------------ method called once each job just before starting event loop  ------------
+void
+PrescalesAnalyzer::beginJob()
+{
+}
+
+// ------------ method called once each job just after ending the event loop  ------------
+void
+PrescalesAnalyzer::endJob()
+{
+}
+
+
+// ------------ method called when ending the processing of a run  ------------
+void PrescalesAnalyzer::endRun(edm::Run const&, edm::EventSetup const&)
+{
+}
+
+
+// ------------ method called when starting to processes a luminosity block  ------------
+void
+PrescalesAnalyzer::beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
+{
+}
+
+// ------------ method called when ending the processing of a luminosity block  ------------
+void
+PrescalesAnalyzer::endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
+{
+}
+
+// ------------ method fills 'descriptions' with the allowed parameters for the module  ------------
+void
+PrescalesAnalyzer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+  //The following says we do not know what parameters are allowed so do no validation
+  // Please change this to state exactly what you do use, even if it is no parameters
+  edm::ParameterSetDescription desc;
+  desc.setUnknown();
+  descriptions.addDefault(desc);
+}
+
+//define this as a plug-in
+DEFINE_FWK_MODULE(PrescalesAnalyzer);
